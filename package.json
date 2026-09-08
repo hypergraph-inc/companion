@@ -1,0 +1,61 @@
+{
+  "name": "@hypergraph-inc/companion",
+  "version": "1.0.0",
+  "description": "Read and write to a live Tesseract hypergraph from the terminal.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "type": "module",
+  "author": "Zackary <zackary@hypergraph.ca> (https://zackary.dev)",
+  "bin": {
+    "hypergraph": "./companion-cli.mjs"
+  },
+  "exports": {
+    ".": "./companion-cli.mjs",
+    "./read/state": "./read/state.mjs",
+    "./read/grid": "./read/grid.mjs",
+    "./write/rows": "./write/rows.mjs",
+    "./protocol/wire": "./protocol/wire.mjs",
+    "./protocol/csv": "./protocol/csv.js"
+  },
+  "files": [
+    "companion-cli.mjs",
+    "learn.mjs",
+    "cli/",
+    "read/",
+    "session/",
+    "write/",
+    "protocol/",
+    "README.md",
+    "!**/*.test.mjs",
+    "!companion-cli.test.mjs"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "hypergraph",
+    "tesseract",
+    "cli",
+    "graph",
+    "visualization",
+    "multiverse",
+    "simulation",
+    "emergence",
+    "complexity",
+    "digital",
+    "3d",
+    "2d",
+    "digital-life",
+    "digital-multiverse"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hypergraph-inc/companion.git",
+    "directory": "companion"
+  }
+}
