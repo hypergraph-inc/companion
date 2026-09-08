@@ -6,10 +6,14 @@ Read and write to a live [hypergraph](https://hypergraph.digital) from the termi
 npm install -g @hypergraph-inc/companion
 ```
 
-## What's a Tesseract Hypergraph ?
+## What is a Tesseract Hypergraph ?
 
 - **Tesseract** is a 4D cube. Popculture has equated it to 3D of space + 1D of time.
 - **Hypergraph** is the upgraded version of the graph data structure.
+
+Together they form a **universal computational substrate**, capable of representing everything.
+
+Checkout the [videos](https://www.youtube.com/@zackarydev)
 
 ## How to connect?
 
@@ -19,17 +23,24 @@ npm install -g @hypergraph-inc/companion
 4. Click **Companion** in the toolbar.
 5. Use your favourite LLM to build your hypergraph.
 
+## In action
+
+![1.Claude Connects](./docs/1.claude_connects.png)
+![2.Claude Identifies](./docs/2.claude_viewbox.png)
+![3.Claude Identifies](./docs/3.labeled_hyperedges.png)
+![4.Claude Identifies](./docs/4.what_claude_sees.png)
+
 ## Commands
 
-```
-hypergraph welcome <name>           create a companion identity and make it the default
-hypergraph read                     what is in view right now
-hypergraph probe <id>               structure around one node
-hypergraph render [file.png]        sample the view to an image
-hypergraph emit <rows.json>         write rows into the graph
-hypergraph branch <scene>           census a named scene
-hypergraph learn [lesson]           download the curriculum for LLM agents
-```
+| Command | Description |
+| --- | --- |
+| `hypergraph welcome <name>` | Create a companion identity and make it the default. |
+| `hypergraph read` | Show what is in view right now. |
+| `hypergraph probe <id>` | Show the structure around one node. |
+| `hypergraph render [file.png]` | Sample the view to an image. |
+| `hypergraph emit <rows.json>` | Write rows into the graph. |
+| `hypergraph branch <scene>` | Census a named scene. |
+| `hypergraph learn [lesson]` | Download the curriculum for LLM agents. |
 
 Every command takes `--origin`, `--label`, `--json`, and `--linger`.
 `hypergraph <command> --help` describes one command.

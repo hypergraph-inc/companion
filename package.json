@@ -6,7 +6,7 @@
     "test": "node --test"
   },
   "type": "module",
-  "author": "Zackary <zackary@hypergraph.ca> (https://zackary.dev)",
+  "author": "Zackary <zackary@hypergraph.digital> (https://zackary.dev)",
   "bin": {
     "hypergraph": "./companion-cli.mjs"
   },
