@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { splitCommand } from './cli/args.mjs';
 import { COMMANDS, usage, commandHelp } from './cli/commands.mjs';
-import { resolveConfig, writeDefaultLabel } from './cli/config.mjs';
+import { resolveConfig, writeDefaultLabel, writeDefaultOrigin, clearDefaultOrigin, DEFAULT_ORIGIN } from './cli/config.mjs';
 import { companionIdentity } from './session/identity.mjs';
 import { resolveSession, ensurePaired, awaitAdmission } from './session/pairing.mjs';
 import { openStream } from './session/connect.mjs';
@@ -37,6 +37,33 @@ if (args.includes('--version') || args.includes('--V')) {
 
 const cfg = resolveConfig({ command, args });
 const a = cfg.args;
+
+if (command === 'set-origin') {
+  if (a.has('reset')) {
+    if (!clearDefaultOrigin()) {
+      console.error('[companion] could not clear the saved origin');
+      process.exit(1);
+    }
+    console.error(`[companion] origin reset to the hosted default (${DEFAULT_ORIGIN})`);
+  } else {
+    if (!cfg.subject) {
+      console.error('hypergraph: set-origin needs a url, e.g. `hypergraph set-origin http://127.0.0.1:3000`');
+      process.exit(2);
+    }
+    let origin;
+    try {
+      origin = new URL(cfg.subject).origin;
+    } catch {
+      console.error(`hypergraph: "${cfg.subject}" is not a valid url — `
+        + 'set-origin needs a scheme, e.g. http://127.0.0.1:3000');
+      process.exit(2);
+    }
+    writeDefaultOrigin(origin);
+    console.error(`[companion] "${origin}" is now the default origin — commands need `
+      + '--origin/--port only to use a different one');
+  }
+  process.exit(0);
+}
 
 const identity = await companionIdentity(cfg.origin, { label: cfg.label });
 console.error(`[companion] identity "${identity.label}" ${identity.token.slice(0, 8)}`

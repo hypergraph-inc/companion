@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { createArgs, subjectOf } from './args.mjs';
 import { BOOLEAN_FLAGS } from './commands.mjs';
 
@@ -11,6 +11,7 @@ export const FALLBACK_LABEL = 'tesseract-companion';
 
 const keyDir = () => process.env.TESS_COMPANION_KEYS || DEFAULT_KEY_DIR;
 const defaultLabelFile = () => join(keyDir(), 'default-label');
+const defaultOriginFile = () => join(keyDir(), 'default-origin');
 
 export function readDefaultLabel() {
   try {
@@ -26,15 +27,41 @@ export function writeDefaultLabel(label) {
   writeFileSync(defaultLabelFile(), `${label}\n`, { mode: 0o600 });
 }
 
+export function readDefaultOrigin() {
+  try {
+    const origin = readFileSync(defaultOriginFile(), 'utf8').trim();
+    return origin || null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeDefaultOrigin(origin) {
+  mkdirSync(keyDir(), { recursive: true, mode: 0o700 });
+  writeFileSync(defaultOriginFile(), `${origin}\n`, { mode: 0o600 });
+}
+
+export function clearDefaultOrigin() {
+  try {
+    rmSync(defaultOriginFile(), { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function resolveConfig({ command, args }) {
   const a = createArgs(args);
   const subject = subjectOf(args, BOOLEAN_FLAGS);
 
   const port = a.num('port', 3000);
   // --port with no --origin means "talk to my local dev server"; with neither
-  // given there is no server to guess a port for, so this goes to the hosted
+  // given, fall back to whatever `set-origin` last saved, else the hosted
   // instance instead of a hardcoded localhost port most users don't run.
-  const origin = (a.value('origin') || (a.has('port') ? `http://127.0.0.1:${port}` : DEFAULT_ORIGIN))
+  const origin = (a.value('origin')
+    || (a.has('port') ? `http://127.0.0.1:${port}` : null)
+    || readDefaultOrigin()
+    || DEFAULT_ORIGIN)
     .replace(/\/+$/, '');
 
   const linger = a.num('linger', 3);

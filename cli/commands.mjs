@@ -5,7 +5,7 @@ const spec =(sig, help) => {
 
 const GLOBAL = [
   spec('port <n>', 'local dev server port (default 3000); implies http://127.0.0.1'),
-  spec('origin <url>', 'server origin; overrides --port and the hosted default'),
+  spec('origin <url>', 'server origin; overrides --port and whatever set-origin saved'),
   spec('label <name>', 'the name this key appears under (default: the welcomed identity, else tesseract-companion)'),
   spec('json', 'emit machine-readable output'),
   spec('settle <ms>', 'how long to let the stream fill before reading (default 2500)'),
@@ -101,6 +101,11 @@ export const COMMANDS = {
     subject: 'file',
     flags: [...RENDER, ...CENSUS, ...JOIN],
   },
+  'set-origin': {
+    summary: 'save an origin so every later command talks to it without --origin/--port',
+    subject: 'url',
+    flags: [spec('reset', 'clear the saved origin and go back to the hosted default')],
+  },
 };
 
 export const BOOLEAN_FLAGS = new Set([
@@ -123,10 +128,11 @@ const table = (flags) => {
 };
 
 export function usage() {
+  const width = Math.max(...Object.keys(COMMANDS).map((k) => k.length)) + 2;
   return [
     'usage: hypergraph <command> [options]',
     '',
-    ...Object.entries(COMMANDS).map(([k, v]) => `  ${k.padEnd(8)}${v.summary}`),
+    ...Object.entries(COMMANDS).map(([k, v]) => `  ${k.padEnd(width)}${v.summary}`),
     '',
     'run `hypergraph <command> --help` for the options a command takes.',
     'every command accepts --port/--origin, --label, --json, --linger.',

@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -15,6 +15,12 @@ import { renderOptions } from '../read/render.mjs';
 import { emitOptions } from '../write/emit.mjs';
 
 const cfg = (command, ...args) => resolveConfig({ command, args });
+
+// Tests that don't set up their own TESS_COMPANION_KEYS still must not read
+// whatever a real welcome/set-origin left in the developer's actual key dir.
+let isolatedKeyDir;
+before(() => { isolatedKeyDir = mkdtempSync(join(tmpdir(), 'tess-companion-suite-')); process.env.TESS_COMPANION_KEYS = isolatedKeyDir; });
+after(() => { delete process.env.TESS_COMPANION_KEYS; rmSync(isolatedKeyDir, { recursive: true, force: true }); });
 
 test('defaults', () => {
   const c = cfg('read');

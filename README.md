@@ -41,6 +41,7 @@ Checkout the [videos](https://www.youtube.com/@zackarydev)
 | `hypergraph emit <rows.json>` | Write rows into the graph. |
 | `hypergraph branch <scene>` | Census a named scene. |
 | `hypergraph learn [lesson]` | Download the curriculum for LLM agents. |
+| `hypergraph set-origin <url>` | Save an origin as the default for every later command. |
 
 Every command takes `--origin`, `--label`, `--json`, and `--linger`.
 `hypergraph <command> --help` describes one command.
@@ -124,6 +125,23 @@ hypergraph learn hypergraph-colour
 Downloads the lesson scenes this key is entitled to and writes them as skills
 under `~/.claude/skills` (`--skill-dir` to change). Runs automatically the
 first time a key is paired.
+
+### set-origin
+
+```
+hypergraph set-origin http://127.0.0.1:3000
+hypergraph set-origin --reset
+```
+
+Saves an origin so every later command dials out to it without needing
+`--origin` or `--port` — useful when you always work against a local dev
+server or a self-hosted instance. `--reset` clears the saved origin and goes
+back to the hosted default (`https://hypergraph.digital`).
+
+The origin a command uses, in order: `--origin` if given; otherwise `--port`
+(implies `http://127.0.0.1:<port>`, for a one-off dial to a local server);
+otherwise whatever `set-origin` last saved
+(`~/.tesseract/companions/default-origin`); otherwise the hosted default.
 
 ## Identity
 
