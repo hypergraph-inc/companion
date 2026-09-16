@@ -1,14 +1,26 @@
 import fs from 'node:fs';
 import { encodeMark } from '../protocol/wire.mjs';
 import { sendRows } from './rows.mjs';
+import { parseCSV } from '../protocol/csv.js';
 
 export function emitOptions(cfg) {
   return {
     file: cfg.args.value('emit', cfg.command === 'emit' ? cfg.subject : null),
+    json: cfg.args.has('emit-json'),
     batch: cfg.args.num('batch', 0) || undefined,
     rps: cfg.args.num('rps', 0) || undefined,
     markMax: Math.max(1, cfg.args.num('mark-max', 2000) || 2000),
   };
+}
+
+function readRows(file, forceJson) {
+  const text = fs.readFileSync(file, 'utf8');
+  if (!forceJson && !file.endsWith('.json')) return parseCSV(text);
+
+  const parsed = JSON.parse(text);
+  const rows = Array.isArray(parsed) ? parsed : parsed.rows;
+  if (!Array.isArray(rows)) throw new Error(`${file} has no rows array`);
+  return rows;
 }
 
 export function markTouched(stream, what, { slots = [], ids = [] }, max) {
@@ -26,9 +38,7 @@ export function markTouched(stream, what, { slots = [], ids = [] }, max) {
 }
 
 export async function emit(stream, opts) {
-  const parsed = JSON.parse(fs.readFileSync(opts.file, 'utf8'));
-  const rows = Array.isArray(parsed) ? parsed : parsed.rows;
-  if (!Array.isArray(rows)) throw new Error(`${opts.file} has no rows array`);
+  const rows = readRows(opts.file, opts.json);
 
   // Progress is reported as it goes, not at the end: an emit paced to the
   // server's budget can take a while, and a silent CLI looks hung.

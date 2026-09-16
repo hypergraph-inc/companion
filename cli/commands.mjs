@@ -48,7 +48,8 @@ const RENDER = [
 ];
 
 const WRITE = [
-  spec('emit <file>', 'write the rows in this JSON file into the hypergraph'),
+  spec('emit <file>', 'write the rows in this CSV (or .json) file into the hypergraph'),
+  spec('emit-json', 'parse --emit as JSON rows even without a .json extension'),
   spec('batch <n>', 'rows per batch (default 32, max 1000)'),
   spec('rps <n>', 'rows/sec to pace at (default 8; full companions may raise it)'),
   spec('mark-max <n>', 'cap how many touched nodes get marked (default 2000)'),
@@ -87,7 +88,7 @@ export const COMMANDS = {
     ],
   },
   emit: {
-    summary: 'write rows from a JSON file into the hypergraph',
+    summary: 'write rows from a CSV (or JSON) file into the hypergraph',
     subject: 'file',
     flags: [...WRITE, ...JOIN],
   },
