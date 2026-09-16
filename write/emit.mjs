@@ -38,8 +38,10 @@ export function markTouched(stream, what, { slots = [], ids = [] }, max) {
 }
 
 export async function emit(stream, opts) {
-  const rows = readRows(opts.file, opts.json);
+  return emitRows(stream, readRows(opts.file, opts.json), opts);
+}
 
+export async function emitRows(stream, rows, opts = {}) {
   // Progress is reported as it goes, not at the end: an emit paced to the
   // server's budget can take a while, and a silent CLI looks hung.
   let painted = 0;
@@ -56,7 +58,7 @@ export async function emit(stream, opts) {
     },
   });
   if (rows.length) process.stdout.write('\n');
-  console.log(`emitted ${sent.rows} row(s) in ${sent.batches} batch(es) at ${sent.rps} rows/sec from ${opts.file}`);
+  console.log(`emitted ${sent.rows} row(s) in ${sent.batches} batch(es) at ${sent.rps} rows/sec${opts.file ? ` from ${opts.file}` : ''}`);
 
   const touched = new Set();
   for (const row of rows) {

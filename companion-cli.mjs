@@ -5,9 +5,8 @@ import { splitCommand } from './cli/args.mjs';
 import { COMMANDS, usage, commandHelp } from './cli/commands.mjs';
 import { resolveConfig, writeDefaultLabel, writeDefaultOrigin, clearDefaultOrigin, DEFAULT_ORIGIN } from './cli/config.mjs';
 import { companionIdentity } from './session/identity.mjs';
-import { resolveSession, ensurePaired, awaitAdmission } from './session/pairing.mjs';
-import { openStream } from './session/connect.mjs';
-import { createGraphState } from './read/state.mjs';
+import { ensurePaired } from './session/pairing.mjs';
+import { joinSession } from './session/join.mjs';
 import { report, censusOptions } from './read/census.mjs';
 import { createProbe, reportProbe, probeOptions, DEBUG_SEL } from './read/probe.mjs';
 import { render, renderOptions } from './read/render.mjs';
@@ -146,37 +145,8 @@ if (command === 'learn' || a.has('learn')) {
   process.exit(out ? 0 : 1);
 }
 
-let session = null;
-let justPaired = false;
-if (!cfg.own && !cfg.scene) {
-  ({ token: session, justPaired } = await resolveSession({
-    origin: cfg.origin,
-    identity,
-    label: cfg.label,
-    join: cfg.join,
-    noPair: a.has('no-pair'),
-    noOpen: a.has('no-open'),
-  }));
-}
-
-if (justPaired && !a.has('no-learn')) await runLearn({ coreOnly: true });
-
-if (session) console.error(`[companion] joining session ${session.slice(0, 8)}`);
-if (cfg.scene) console.error(`[companion] joining scene ${cfg.scene}`);
-if (session) {
-  await awaitAdmission({ origin: cfg.origin, identity, label: cfg.label, session });
-}
-
-const state = createGraphState();
-const { stream, ready } = openStream({
-  wsOrigin: cfg.wsOrigin,
-  ticket: identity.ticket,
-  scene: cfg.scene,
-  session,
-  label: cfg.label,
-  state,
-  settleMs: cfg.settleMs,
-  lingerMs: cfg.lingerMs,
+const { state, stream, ready } = await joinSession(cfg, identity, {
+  onPaired: a.has('no-learn') ? null : () => runLearn({ coreOnly: true }),
 });
 
 try {
