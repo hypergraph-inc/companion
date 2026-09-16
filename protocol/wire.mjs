@@ -1,3 +1,8 @@
+// GENERATED from server/wire.mjs by scripts/vendor-companion-protocol.mjs.
+// Do not edit. Change server/wire.mjs and run `yarn companion:vendor`.
+
+
+
 export const MAGIC = 0x7e;
 
 // Bump on any change to a message's byte layout: a field added, removed,
@@ -6,7 +11,7 @@ export const MAGIC = 0x7e;
 // changed field -- it silently misparses everything after it, or overruns the
 // frame and throws deep inside a decode. The handshake compares this so the
 // mismatch is refused at HELLO instead.
-export const PROTO_VERSION = 1;
+export const PROTO_VERSION = 2;
 
 export const MSG = {
   HELLO: 0x01,
@@ -89,6 +94,8 @@ export const MSG = {
   // together. Not a presence roster: PRESENCE is who is looking at YOUR branch
   // and where their viewport is, this is one number about the whole process.
   POPULATION: 0x66,
+
+  BRANCH_STATE: 0x67,
 };
 
 export const SPACE_CTL_OP = { NUDGE: 0, HALT: 1, HOME: 2, TURN: 3 };
@@ -125,13 +132,18 @@ export const ROW_FIELD = {
 
 export const MAX_PAYLOAD = 0xffffffff;
 
-export const KEYFRAME_MAX_NODES = Math.floor((MAX_PAYLOAD - 15) / 15);
+export const KEYFRAME_MAX_NODES = Math.floor((MAX_PAYLOAD - 15) / 19);
 
 const clampI16 = (v) => Math.max(-32768, Math.min(32767, Math.round(v)));
 const clampI8 = (v) => Math.max(-128, Math.min(127, Math.round(v)));
+const clampI32 = (v) => Math.max(-2147483648, Math.min(2147483647, Math.round(v)));
 
+// Absolute node/hull positions use the full i32 range -- an i16 grid sized to
+// cover the whole scene's extent coarsens everything once anything sits far
+// from origin (see PROTO_VERSION history). Frame-to-frame deltas (dpos/dvel)
+// stay i8/i16: a delta is small regardless of how far out the node sits.
 export function quantPos(world, posScale) {
-  return clampI16(world / posScale);
+  return clampI32(world / posScale);
 }
 
 export function quantVel(vel, velScale) {
@@ -160,6 +172,7 @@ class Writer {
   i8(v) { this.ensure(1); this.buf.writeInt8(clampI8(v), this.off); this.off += 1; return this; }
   u16(v) { this.ensure(2); this.buf.writeUInt16LE(v & 0xffff, this.off); this.off += 2; return this; }
   i16(v) { this.ensure(2); this.buf.writeInt16LE(clampI16(v), this.off); this.off += 2; return this; }
+  i32(v) { this.ensure(4); this.buf.writeInt32LE(clampI32(v), this.off); this.off += 4; return this; }
   u24(v) { this.ensure(3); this.buf.writeUIntLE(v & 0xffffff, this.off, 3); this.off += 3; return this; }
   u32(v) { this.ensure(4); this.buf.writeUInt32LE(v >>> 0, this.off); this.off += 4; return this; }
   f32(v) { this.ensure(4); this.buf.writeFloatLE(v, this.off); this.off += 4; return this; }
@@ -205,9 +218,9 @@ export function encodePong(clientTime, echoTime) {
 }
 
 export function encodePointer(p) {
-  const w = new Writer(16);
-  w.u32(p.clientTime).u32(p.seq).i16(p.wx).i16(p.wy)
-    .u16(p.zoomQ ?? 0).u8(p.buttons ?? 0).u8(0);
+  const w = new Writer(22);
+  w.u32(p.clientTime).u32(p.seq).i32(p.wx).i32(p.wy)
+    .u32(p.zoomQ ?? 0).u8(p.buttons ?? 0).u8(0);
   return frame(MSG.POINTER, w.done());
 }
 
@@ -236,8 +249,8 @@ export function encodePause(p) {
 }
 
 export function encodeSimKey(k) {
-  const w = new Writer(12);
-  w.u32(k.seq).u8(k.key).i16(k.wx).i16(k.wy);
+  const w = new Writer(16);
+  w.u32(k.seq).u8(k.key).i32(k.wx).i32(k.wy);
   return frame(MSG.SIM_KEY, w.done());
 }
 
@@ -258,8 +271,8 @@ export function encodeSpaceCtl(c) {
 }
 
 export function encodeView(v) {
-  const w = new Writer(16);
-  w.u32(v.seq).i16(v.cx).i16(v.cy).u16(v.halfW).u16(v.halfH).f32(v.rot || 0);
+  const w = new Writer(24);
+  w.u32(v.seq).i32(v.cx).i32(v.cy).u32(v.halfW).u32(v.halfH).f32(v.rot || 0);
   return frame(MSG.VIEW, w.done());
 }
 
@@ -372,9 +385,9 @@ export function encodeMark(m) {
 }
 
 export function encodeFireEvents(events) {
-  const w = new Writer(4 + events.length * 4);
+  const w = new Writer(4 + events.length * 8);
   w.u16(events.length);
-  for (const e of events) w.i16(e.px).i16(e.py);
+  for (const e of events) w.i32(e.px).i32(e.py);
   return frame(MSG.FIRE, w.done());
 }
 
@@ -386,9 +399,9 @@ export function encodeHullDelta(d) {
     const nVerts = u.verts.length / 2;
     if (nVerts > 255) throw new Error(`hull polygon ${nVerts} verts exceeds u8`);
     w.u16(u.hullSlot).u8(u.rgba[0]).u8(u.rgba[1]).u8(u.rgba[2]).u8(u.rgba[3])
-      .i16(u.cx).i16(u.cy).i16(u.vx).i16(u.vy)
-      .u16(u.fillR).u8(nVerts);
-    for (let i = 0; i < u.verts.length; i++) w.i16(u.verts[i]);
+      .i32(u.cx).i32(u.cy).i16(u.vx).i16(u.vy)
+      .u32(u.fillR).u8(nVerts);
+    for (let i = 0; i < u.verts.length; i++) w.i32(u.verts[i]);
   }
   w.u16(d.removes.length);
   for (const slot of d.removes) w.u16(slot);
@@ -495,16 +508,20 @@ export function encodePopulation(n) {
   return frame(MSG.POPULATION, w.done());
 }
 
+export function encodeBranchState(state) {
+  return encodeJson(MSG.BRANCH_STATE, state);
+}
+
 function writeFrameHeader(w, h) {
   w.u32(h.frameSeq).u32(h.tickTime).u32(h.lastAppliedInputSeq || 0);
 }
 
 export function encodeKeyframe(header, nodes) {
-  const w = new Writer(16 + nodes.length * 16);
+  const w = new Writer(16 + nodes.length * 20);
   writeFrameHeader(w, header);
   w.u24(nodes.length);
   for (const n of nodes) {
-    w.u16(n.slot).i16(n.px).i16(n.py).i16(n.vx).i16(n.vy)
+    w.u16(n.slot).i32(n.px).i32(n.py).i16(n.vx).i16(n.vy)
       .u8(n.r).u8(n.g).u8(n.b).u8(n.a).u8(n.radius).u8(n.stroke || 0);
   }
   return frame(MSG.KEYFRAME, w.done());
@@ -519,7 +536,7 @@ export function encodeDelta(header, baseSeq, changes) {
     if (c.entered) {
       const e = c.entered;
       w.u16(c.slot).u8(FLAG.ENTERED)
-        .i16(e.px).i16(e.py).i16(e.vx).i16(e.vy)
+        .i32(e.px).i32(e.py).i16(e.vx).i16(e.vy)
         .u8(e.r).u8(e.g).u8(e.b).u8(e.a).u8(e.radius).u8(e.stroke || 0);
       continue;
     }
@@ -528,6 +545,8 @@ export function encodeDelta(header, baseSeq, changes) {
       continue;
     }
     const [dx, dy] = c.dpos;
+    // BIG_DPOS is the i32 branch now: a delta between two i32 base positions
+    // can itself exceed i16, which it never could when the bases were i16.
     const bigPos = dx < -128 || dx > 127 || dy < -128 || dy > 127;
     let flags = bigPos ? FLAG.BIG_DPOS : 0;
     let bigVel = false;
@@ -541,7 +560,7 @@ export function encodeDelta(header, baseSeq, changes) {
     if (c.radius != null) flags |= FLAG.RADIUS_CHANGED;
     if (c.stroke != null) flags |= FLAG.STROKE_CHANGED;
     w.u16(c.slot).u8(flags);
-    if (bigPos) w.i16(dx).i16(dy); else w.i8(dx).i8(dy);
+    if (bigPos) w.i32(dx).i32(dy); else w.i8(dx).i8(dy);
     if (c.dvel) {
       if (bigVel) w.i16(c.dvel[0]).i16(c.dvel[1]);
       else w.i8(c.dvel[0]).i8(c.dvel[1]);
@@ -581,6 +600,7 @@ class Reader {
   i8() { const v = this.buf.readInt8(this.off); this.off += 1; return v; }
   u16() { const v = this.buf.readUInt16LE(this.off); this.off += 2; return v; }
   i16() { const v = this.buf.readInt16LE(this.off); this.off += 2; return v; }
+  i32() { const v = this.buf.readInt32LE(this.off); this.off += 4; return v; }
   u24() { const v = this.buf.readUIntLE(this.off, 3); this.off += 3; return v; }
   u32() { const v = this.buf.readUInt32LE(this.off); this.off += 4; return v; }
   f32() { const v = this.buf.readFloatLE(this.off); this.off += 4; return v; }
@@ -614,14 +634,14 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
     msg = { clientTime: r.u32(), echoTime: r.u32() };
   } else if (type === MSG.POINTER) {
     msg = {
-      clientTime: r.u32(), seq: r.u32(), wx: r.i16(), wy: r.i16(),
-      zoomQ: r.u16(), buttons: r.u8(),
+      clientTime: r.u32(), seq: r.u32(), wx: r.i32(), wy: r.i32(),
+      zoomQ: r.u32(), buttons: r.u8(),
     };
   } else if (type === MSG.GRAB) {
     msg = { seq: r.u32(), slot: r.u16(), action: r.u8() };
   } else if (type === MSG.VIEW) {
-    msg = { seq: r.u32(), cx: r.i16(), cy: r.i16(), halfW: r.u16(), halfH: r.u16() };
-    msg.rot = r.buf.length >= 16 ? r.f32() : 0;
+    msg = { seq: r.u32(), cx: r.i32(), cy: r.i32(), halfW: r.u32(), halfH: r.u32() };
+    msg.rot = r.buf.length >= 24 ? r.f32() : 0;
   } else if (type === MSG.CAMERA) {
     msg = {
       seq: r.u32(), claimed: r.u8() !== 0,
@@ -668,7 +688,7 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
   } else if (type === MSG.PAUSE) {
     msg = { seq: r.u32(), paused: r.u8() !== 0 };
   } else if (type === MSG.SIM_KEY) {
-    msg = { seq: r.u32(), key: r.u8(), wx: r.i16(), wy: r.i16() };
+    msg = { seq: r.u32(), key: r.u8(), wx: r.i32(), wy: r.i32() };
   } else if (type === MSG.SPACE_CTL) {
     const op = r.u8();
     if (op === SPACE_CTL_OP.NUDGE) msg = { op, axis: r.u8(), dir: r.i8() };
@@ -719,12 +739,13 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
     }
     msg = { seq, rows };
   } else if (type === MSG.META || type === MSG.DEBUG_INFO || type === MSG.ROSTER
-    || type === MSG.STATS || type === MSG.DEBUG_GRID || type === MSG.DEBUG_FORCES) {
+    || type === MSG.STATS || type === MSG.DEBUG_GRID || type === MSG.DEBUG_FORCES
+    || type === MSG.BRANCH_STATE) {
     msg = JSON.parse(r.rest().toString('utf8'));
   } else if (type === MSG.FIRE) {
     const count = r.u16();
     const events = [];
-    for (let i = 0; i < count; i++) events.push({ px: r.i16(), py: r.i16() });
+    for (let i = 0; i < count; i++) events.push({ px: r.i32(), py: r.i32() });
     msg = { events };
   } else if (type === MSG.PRESENCE_SELF) {
     const cx = r.f32(), cy = r.f32(), halfW = r.f32(), halfH = r.f32(), rot = r.f32();
@@ -779,7 +800,7 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
     const nodes = [];
     for (let i = 0; i < nodeCount; i++) {
       nodes.push({
-        slot: r.u16(), px: r.i16(), py: r.i16(), vx: r.i16(), vy: r.i16(),
+        slot: r.u16(), px: r.i32(), py: r.i32(), vx: r.i16(), vy: r.i16(),
         r: r.u8(), g: r.u8(), b: r.u8(), a: r.u8(), radius: r.u8(), stroke: r.u8(),
       });
     }
@@ -796,7 +817,7 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
         changes.push({
           slot,
           entered: {
-            px: r.i16(), py: r.i16(), vx: r.i16(), vy: r.i16(),
+            px: r.i32(), py: r.i32(), vx: r.i16(), vy: r.i16(),
             r: r.u8(), g: r.u8(), b: r.u8(), a: r.u8(), radius: r.u8(), stroke: r.u8(),
           },
         });
@@ -804,7 +825,7 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
       }
       if (flags & FLAG.LEFT) { changes.push({ slot, left: true }); continue; }
       const c = { slot };
-      c.dpos = flags & FLAG.BIG_DPOS ? [r.i16(), r.i16()] : [r.i8(), r.i8()];
+      c.dpos = flags & FLAG.BIG_DPOS ? [r.i32(), r.i32()] : [r.i8(), r.i8()];
       if (flags & FLAG.VEL_CHANGED) {
         c.dvel = flags & FLAG.BIG_DVEL ? [r.i16(), r.i16()] : [r.i8(), r.i8()];
       }
@@ -821,11 +842,11 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
     for (let i = 0; i < upsertCount; i++) {
       const hullSlot = r.u16();
       const rgba = [r.u8(), r.u8(), r.u8(), r.u8()];
-      const cx = r.i16(), cy = r.i16(), vx = r.i16(), vy = r.i16();
-      const fillR = r.u16();
+      const cx = r.i32(), cy = r.i32(), vx = r.i16(), vy = r.i16();
+      const fillR = r.u32();
       const nVerts = r.u8();
-      const verts = new Int16Array(nVerts * 2);
-      for (let j = 0; j < verts.length; j++) verts[j] = r.i16();
+      const verts = new Int32Array(nVerts * 2);
+      for (let j = 0; j < verts.length; j++) verts[j] = r.i32();
       upserts.push({ hullSlot, rgba, cx, cy, vx, vy, fillR, verts });
     }
     const removes = [];

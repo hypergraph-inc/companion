@@ -1,6 +1,6 @@
 {
   "name": "@hypergraph-inc/companion",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Read and write to a live Tesseract hypergraph from the terminal.",
   "scripts": {
     "test": "node --test"
