@@ -8,7 +8,7 @@
   "type": "module",
   "author": "Zackary <zackary@hypergraph.digital> (https://zackary.dev)",
   "bin": {
-    "hypergraph": "./companion-cli.mjs"
+    "hypergraph": "companion-cli.mjs"
   },
   "exports": {
     ".": "./companion-cli.mjs",
