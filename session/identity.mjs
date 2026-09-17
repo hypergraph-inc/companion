@@ -79,8 +79,14 @@ function loadOrMintKeyPair(label) {
   return { privateKey, publicKey, custody: 'file', file, minted: true };
 }
 
-export async function companionIdentity(port, { label = 'claude' } = {}) {
+async function identityOfKind(origin, label, kind) {
   const { privateKey, publicKey, custody, file, minted } = loadOrMintKeyPair(label);
-  const identity = await authenticate(port, { keyPair: { privateKey, publicKey }, kind: 'companion' });
+  const identity = await authenticate(origin, { keyPair: { privateKey, publicKey }, kind });
   return { ...identity, label, custody, file, minted };
 }
+
+export const companionIdentity = (origin, { label = 'claude' } = {}) => identityOfKind(origin, label, 'companion');
+
+export const deviceIdentity = (origin, { label }) => identityOfKind(origin, label, 'device');
+
+export const workerIdentity = (origin, { label }) => identityOfKind(origin, `worker-${label}`, 'worker');

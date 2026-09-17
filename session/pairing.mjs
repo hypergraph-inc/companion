@@ -47,8 +47,10 @@ function openInBrowser(target) {
   }
 }
 
-export async function pairThisKey({ origin, identity, label, noOpen }) {
-  const r = await fetch(`${origin}/companion/pair?label=${encodeURIComponent(label)}`, {
+export async function pairThisKey({ origin, identity, label, program = null, noOpen }) {
+  const query = new URLSearchParams({ label });
+  if (program) query.set('program', program);
+  const r = await fetch(`${origin}/companion/pair?${query}`, {
     method: 'POST', headers: { Authorization: `Bearer ${identity.ticket}` },
   });
   const body = await r.json().catch(() => ({}));
@@ -56,7 +58,9 @@ export async function pairThisKey({ origin, identity, label, noOpen }) {
 
   const link = `${browserOrigin(origin)}${body.path}`;
   const opened = !noOpen && openInBrowser(link);
-  console.error(`[companion] this key has never been paired with an account on ${origin}`);
+  console.error(program
+    ? `[companion] "${label}" has no enrollment on a ${program} branch on ${origin}`
+    : `[companion] this key has never been paired with an account on ${origin}`);
   console.error(`[companion] ${opened ? 'opened' : 'open'} ${link}`);
   console.error('[companion] approve there with your passkey — the page must show exactly:');
   console.error(`[companion]   ${identity.token}`);

@@ -33,7 +33,7 @@ export async function authenticate(origin, { keyPair, kind = 'companion' } = {})
   const answer = await ar.json();
   if (!answer.ok) throw new Error(`identity: authentication refused (${answer.error})`);
 
-  return { token: answer.token, ticket: answer.ticket, pubkey };
+  return { token: answer.token, ticket: answer.ticket, pubkey, account: answer.account || null };
 }
 
 export function streamProtocols(ticket) {
