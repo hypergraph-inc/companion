@@ -87,12 +87,12 @@ test('several open sessions join the most recent, which is the first listed', as
 
 // An empty list has two causes that call for opposite advice, and the paired
 // flag is the only thing that tells them apart.
-test('a paired key with no window is told to open one, not to pair again', async () => {
-  await withServer({ '/companion': { sessions: [], paired: true } }, async (origin, seen) => {
-    await assert.rejects(
-      () => resolveSession({ origin, identity, label: 'l', join: null }),
-      /this key is paired, but the account it belongs to has no window/,
-    );
+test('a paired key with no window waits for one to open, and never pairs again', async () => {
+  let lists = 0;
+  const route = () => ({ sessions: ++lists < 2 ? [] : [{ token: 'opened' }], paired: true });
+  await withServer({ '/companion': route }, async (origin, seen) => {
+    const out = await quiet(() => resolveSession({ origin, identity, label: 'l', join: null }));
+    assert.equal(out.token, 'opened');
     assert.equal(seen.some((s) => s.path === '/companion/pair'), false);
   });
 });

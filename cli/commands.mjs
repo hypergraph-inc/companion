@@ -64,6 +64,8 @@ export const COMMANDS = {
       spec('no-open', 'print the pairing link instead of opening a browser'),
       spec('no-learn', 'skip the curriculum download that follows a fresh pairing'),
       spec('no-default', 'do not make this identity the default for future commands'),
+      spec('agents <list>', 'who reads the lessons: claude, codex, skills folder paths, or none'),
+      spec('no-link', 'never symlink lessons into an agent skills folder'),
     ],
   },
   read: {
@@ -82,7 +84,7 @@ export const COMMANDS = {
     flags: [
       spec('all', 'download every lesson on offer, not just the core ones'),
       spec('relearn', 're-read lessons whose digest has not changed'),
-      spec('skill-dir <dir>', 'where lessons are written (default ~/.claude/skills)'),
+      spec('skill-dir <dir>', 'where lessons are written (default ~/.tesseract/skills)'),
       spec('no-pair', 'never start the pairing flow'),
       spec('no-open', 'print the pairing link instead of opening a browser'),
     ],

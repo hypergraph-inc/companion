@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   checkRows, batches, sendRows, node, edge, retype, colourRows,
-  hyperedgeRows, MEMBER_LAYERS, MAX_BATCH, BATCH_CEILING, DEFAULT_RPS,
+  hyperedgeRows, IN, MAX_BATCH, BATCH_CEILING, DEFAULT_RPS,
 } from './rows.mjs';
 import { decodeMessage, MSG } from '../protocol/wire.mjs';
 
@@ -149,29 +149,17 @@ test('hyperedgeRows mints the hull node and one member edge each', () => {
   assert.equal(rows[0].label, 'H');
   assert.equal(rows[0].weight, 5);
   assert.deepEqual(rows.slice(1).map((r) => [r.source, r.target, r.layer, r.weight]),
-    [['a', 'h', 'memberOf', 0.5], ['b', 'h', 'memberOf', 0.5]]);
+    [['a', 'h', IN, 0.5], ['b', 'h', IN, 0.5]]);
 });
 
-test('hyperedgeRows takes weights and an alternative member layer', () => {
+test('hyperedgeRows takes weights', () => {
   const rows = hyperedgeRows({
     id: 'h', kind: 'group', label: 'H', members: ['a'],
-    weight: 9, layer: 'partOf', memberWeight: 2,
+    weight: 9, memberWeight: 2,
   });
   assert.equal(rows[0].weight, 9);
-  assert.equal(rows[1].layer, 'partOf');
+  assert.equal(rows[1].layer, IN);
   assert.equal(rows[1].weight, 2);
-});
-
-// Only these three layers form hulls; any other silently produces no hull at
-// all, so it is refused at the point the rows are built.
-test('hyperedgeRows refuses a layer that does not form a hull', () => {
-  assert.throws(
-    () => hyperedgeRows({ id: 'h', kind: 'g', label: 'H', members: ['a'], layer: 'calls' }),
-    /does not form hulls/,
-  );
-  for (const layer of MEMBER_LAYERS) {
-    assert.doesNotThrow(() => hyperedgeRows({ id: 'h', kind: 'g', label: 'H', members: ['a'], layer }));
-  }
 });
 
 test('hyperedgeRows drops a repeated member rather than double-wiring it', () => {

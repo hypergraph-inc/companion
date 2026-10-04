@@ -60,6 +60,13 @@ needing `--label`.
 `--no-default` welcomes the identity without changing which one commands use
 by default.
 
+Then it asks which coding agents read the lessons (Claude Code, Codex, any
+skills folder path, or none) and whether `learn` may symlink lessons into
+their skills folders. The answer is saved in
+`~/.tesseract/companions/agents.json`. Without a terminal, pass
+`--agents claude,~/work/skills` (or `--agents none`), plus `--no-link` to
+refuse links. To change only this choice, run `hypergraph welcome --no-pair --no-learn`.
+
 ### read
 
 ```
@@ -123,8 +130,10 @@ hypergraph learn hypergraph-colour
 ```
 
 Downloads the lesson scenes this key is entitled to and writes them as skills
-under `~/.claude/skills` (`--skill-dir` to change). Runs automatically the
-first time a key is paired.
+under `~/.tesseract/skills` (`--skill-dir` to change). If `welcome` was allowed
+to link, it then symlinks each one into the chosen agents' skills folders. A
+skill already there that `learn` did not write is left alone. Runs
+automatically the first time a key is paired.
 
 ### set-origin
 

@@ -34,8 +34,14 @@ export function openStream({ wsOrigin, ticket, scene, session, label, state, set
   };
 
   function announce(rect) {
-    announced = rect;
-    ws.send(encodePresenceSelf({ ...rect, kind: 1, label }));
+    const boundary = rect.boundary || [
+      rect.cx - rect.halfW, rect.cy - rect.halfH,
+      rect.cx + rect.halfW, rect.cy - rect.halfH,
+      rect.cx + rect.halfW, rect.cy + rect.halfH,
+      rect.cx - rect.halfW, rect.cy + rect.halfH,
+    ];
+    announced = { ...rect, boundary };
+    ws.send(encodePresenceSelf({ ...announced, kind: 1, label }));
   }
 
   async function shutdown(code) {

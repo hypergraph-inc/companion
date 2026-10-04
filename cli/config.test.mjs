@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import {
-  resolveConfig, readDefaultLabel, writeDefaultLabel,
+  resolveConfig, readDefaultLabel, writeDefaultLabel, parseAgents, writeAgents,
   DEFAULT_SKILL_DIR, DEFAULT_KEY_DIR, DEFAULT_ORIGIN, FALLBACK_LABEL,
 } from './config.mjs';
 import { censusOptions } from '../read/census.mjs';
@@ -125,7 +125,7 @@ test('the skill dir prefers the flag, then the env, then home', () => {
   try {
     delete process.env.TESS_COMPANION_SKILLS;
     assert.equal(cfg('learn').skillDir, DEFAULT_SKILL_DIR);
-    assert.equal(DEFAULT_SKILL_DIR, join(homedir(), '.claude', 'skills'));
+    assert.equal(DEFAULT_SKILL_DIR, join(homedir(), '.tesseract', 'skills'));
 
     process.env.TESS_COMPANION_SKILLS = '/tmp/env-skills';
     assert.equal(cfg('learn').skillDir, '/tmp/env-skills');
@@ -134,6 +134,22 @@ test('the skill dir prefers the flag, then the env, then home', () => {
     if (prev == null) delete process.env.TESS_COMPANION_SKILLS;
     else process.env.TESS_COMPANION_SKILLS = prev;
   }
+});
+
+test('parseAgents takes a comma list, none, or nothing', () => {
+  assert.equal(parseAgents(null), null);
+  assert.deepEqual(parseAgents('none'), []);
+  assert.deepEqual(parseAgents(' Claude, codex,claude '), ['claude', 'codex']);
+  assert.throws(() => parseAgents('claude,cursor'), /unknown agent "cursor"/);
+  assert.deepEqual(parseAgents('~/My Skills,/opt/skills'), [join(homedir(), 'My Skills'), '/opt/skills']);
+});
+
+test('the agent choice is unasked until welcome saves it', () => {
+  assert.equal(cfg('learn').agents, null);
+  writeAgents({ agents: ['claude'], link: true });
+  assert.deepEqual(cfg('learn').agents, { agents: ['claude'], link: true });
+  writeAgents({ agents: ['claude'], link: false });
+  assert.deepEqual(cfg('learn').agents, { agents: ['claude'], link: false });
 });
 
 test('the key dir prefers the env, then home', () => {

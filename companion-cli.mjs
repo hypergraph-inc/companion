@@ -3,7 +3,10 @@
 import { readFileSync } from 'node:fs';
 import { splitCommand } from './cli/args.mjs';
 import { COMMANDS, usage, commandHelp } from './cli/commands.mjs';
-import { resolveConfig, writeDefaultLabel, writeDefaultOrigin, clearDefaultOrigin, DEFAULT_ORIGIN } from './cli/config.mjs';
+import {
+  resolveConfig, writeDefaultLabel, writeDefaultOrigin, clearDefaultOrigin, writeAgents, DEFAULT_ORIGIN,
+} from './cli/config.mjs';
+import { onboardAgents, linkTargets } from './cli/agents.mjs';
 import { companionIdentity } from './session/identity.mjs';
 import { ensurePaired } from './session/pairing.mjs';
 import { joinSession } from './session/join.mjs';
@@ -84,6 +87,14 @@ function learnProgress(p) {
       + ` → skill "${p.skill}"`);
   } else if (p.phase === 'done') {
     console.error(`[learn] ${p.learned} learned, ${p.skipped} unchanged — ${p.skillDir}`);
+    for (const d of p.linked) console.error(`[learn]   linked into ${d}`);
+    for (const c of p.conflicts) {
+      console.error(`[learn]   left ${c} alone — it was not written by learn`);
+    }
+    if (!cfg.agents) {
+      console.error('[learn]   no agent reads these yet — run `hypergraph welcome --no-pair --no-learn`'
+        + ' to choose one');
+    }
   }
 }
 
@@ -94,6 +105,7 @@ async function runLearn({ coreOnly = true, only = null } = {}) {
       ticket: identity.ticket,
       label: cfg.label,
       skillDir: cfg.skillDir,
+      agentDirs: linkTargets(cfg.agents),
       settleMs: cfg.settleMs,
       coreOnly,
       only,
@@ -121,6 +133,17 @@ if (command === 'welcome') {
       writeDefaultLabel(cfg.label);
       console.error(`[companion] "${cfg.label}" is now the default identity — commands need `
         + '--label only to use a different one');
+    }
+    const choice = await onboardAgents({ agentsFlag: a.value('agents'), noLink: a.has('no-link') });
+    if (choice) {
+      writeAgents(choice);
+      cfg.agents = choice;
+      console.error(choice.link
+        ? `[companion] lessons will be symlinked into ${linkTargets(choice).join(', ')}`
+        : `[companion] lessons stay in ${cfg.skillDir} — nothing is linked`);
+    } else {
+      console.error('[companion] no terminal to ask which agents to link — pass --agents claude,codex'
+        + ' or --agents none');
     }
     if (!a.has('no-learn')) await runLearn({ coreOnly: true });
     process.exit(0);

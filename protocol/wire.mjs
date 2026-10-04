@@ -11,7 +11,7 @@ export const MAGIC = 0x7e;
 // changed field -- it silently misparses everything after it, or overruns the
 // frame and throws deep inside a decode. The handshake compares this so the
 // mismatch is refused at HELLO instead.
-export const PROTO_VERSION = 2;
+export const PROTO_VERSION = 3;
 
 export const MSG = {
   HELLO: 0x01,
@@ -23,6 +23,7 @@ export const MSG = {
 
   NODE_LABEL: 0x12,
   ROSTER: 0x13,
+  NODE_REST: 0x14,
   KEYFRAME: 0x20,
   DELTA: 0x21,
   EDGE_DELTA: 0x31,
@@ -62,6 +63,8 @@ export const MSG = {
 
   DEBUG_FORCES: 0x54,
 
+  DEBUG_HEAT: 0x55,
+
   FIRE: 0x32,
 
   HULL: 0x33,
@@ -96,9 +99,20 @@ export const MSG = {
   POPULATION: 0x66,
 
   BRANCH_STATE: 0x67,
+
+  PORTALS: 0x68,
+
+  SYSTEM: 0x69,
+
+  EDIT_REPLY: 0x6a,
+
+  FORK: 0x4f,
+  FORK_REPLY: 0x6b,
 };
 
-export const SPACE_CTL_OP = { NUDGE: 0, HALT: 1, HOME: 2, TURN: 3 };
+export const SYSTEM_FLAG = { RESET: 1 << 0 };
+
+export const SPACE_CTL_OP = { NUDGE: 0, HALT: 1, HOME: 2, TURN: 3, POSE: 4 };
 
 export const FLAG = {
   BIG_DPOS: 1 << 0,
@@ -266,6 +280,8 @@ export function encodeSpaceCtl(c) {
   else if (c.op === SPACE_CTL_OP.TURN) {
     const q = (v) => Math.max(-32768, Math.min(32767, Math.round((v || 0) * 100)));
     w.i16(q(c.rx)).i16(q(c.ry)).i16(q(c.rz));
+  } else if (c.op === SPACE_CTL_OP.POSE) {
+    w.f32(c.rx || 0).f32(c.ry || 0).f32(c.rz || 0).f32(c.kx || 0).f32(c.ky || 0);
   }
   return frame(MSG.SPACE_CTL, w.done());
 }
@@ -373,6 +389,23 @@ export function encodeNodeLabels(entries) {
   return frame(MSG.NODE_LABEL, w.done());
 }
 
+const VIEW_KEYS = ['rx', 'ry', 'rz', 'kx', 'ky', 'scale'];
+
+export function encodeNodeRests(space, view, pose, bounds, entries) {
+  const w = new Writer(64);
+  writeSpaceId(w, space);
+  for (const k of VIEW_KEYS) w.f32(view[k] || 0);
+  w.u8(pose ? 1 : 0);
+  if (pose) for (const k of VIEW_KEYS) w.f32(pose[k] ?? view[k] ?? 0);
+  for (let i = 0; i < 6; i++) w.f32(bounds[i]);
+  w.u16(entries.length);
+  for (const e of entries) {
+    w.u16(e.slot).u8(e.clear ? 0 : e.region ? 2 : 1);
+    if (!e.clear) w.f32(e.x).f32(e.y).f32(e.z);
+  }
+  return frame(MSG.NODE_REST, w.done());
+}
+
 export function encodeJson(type, obj) {
   return frame(type, Buffer.from(JSON.stringify(obj), 'utf8'));
 }
@@ -402,6 +435,15 @@ export function encodeHullDelta(d) {
       .i32(u.cx).i32(u.cy).i16(u.vx).i16(u.vy)
       .u32(u.fillR).u8(nVerts);
     for (let i = 0; i < u.verts.length; i++) w.i32(u.verts[i]);
+    const spaces = u.rests ? u.spaces : [];
+    w.u32(u.pad || 0).u8(spaces.length);
+    for (const space of spaces) writeSpaceId(w, space);
+    if (!spaces.length) continue;
+    for (let i = 0; i < nVerts; i++) {
+      const tag = u.rests[i * 4];
+      w.u8(tag);
+      if (tag) w.f32(u.rests[i * 4 + 1]).f32(u.rests[i * 4 + 2]).f32(u.rests[i * 4 + 3]);
+    }
   }
   w.u16(d.removes.length);
   for (const slot of d.removes) w.u16(slot);
@@ -409,6 +451,34 @@ export function encodeHullDelta(d) {
 }
 
 const PRESENCE_LABEL_MAX = 63;
+
+// A boundary goes out as its centroid plus offsets, for the same reason dpos is
+// a delta: f32 at an absolute million loses the extents entirely, and a
+// viewport is made of the differences between its points. The offsets are small
+// however far out the viewer is standing, so heading and half-extents survive a
+// deep zoom that absolute corners would have flattened to a bounding box.
+function writeBoundary(w, b) {
+  const n = b.length / 2;
+  if (n > 255) throw new Error(`boundary arity ${n} exceeds u8`);
+  let sx = 0, sy = 0;
+  for (let i = 0; i < b.length; i += 2) { sx += b[i]; sy += b[i + 1]; }
+  const cx = Math.fround(sx / n);
+  const cy = Math.fround(sy / n);
+  w.u8(n).f32(cx).f32(cy);
+  for (let i = 0; i < b.length; i += 2) w.f32(b[i] - cx).f32(b[i + 1] - cy);
+}
+
+function readBoundary(r) {
+  const n = r.u8();
+  const cx = r.f32();
+  const cy = r.f32();
+  const out = new Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    out[i * 2] = cx + r.f32();
+    out[i * 2 + 1] = cy + r.f32();
+  }
+  return out;
+}
 
 function writePresenceLabel(w, label) {
   let bytes = Buffer.from(label || '', 'utf8');
@@ -482,19 +552,23 @@ export function encodeRows(r) {
 }
 
 export function encodePresenceSelf(p) {
-  const w = new Writer(32);
-  w.f32(p.cx).f32(p.cy).f32(p.halfW).f32(p.halfH).f32(p.rot || 0);
+  const w = new Writer(48);
+  writeBoundary(w, p.boundary);
   w.u8(p.kind ?? 0).u8(p.own ? 1 : 0);
   writePresenceLabel(w, p.label);
   return frame(MSG.PRESENCE_SELF, w.done());
 }
 
+// A viewport is its boundary, not a rectangle: n points in world order, the
+// same u8 arity a hyperedge carries in encodeEdgeDelta. A rect plus a heading
+// survives a rotation and nothing else, and the far side of a portal is a 2x3
+// with skew in it, so there is no rect that side could ever have sent.
 export function encodePresence(d) {
   const w = new Writer(64);
   w.u16(d.viewers.length);
   for (const v of d.viewers) {
     w.u32(v.id);
-    w.f32(v.cx).f32(v.cy).f32(v.halfW).f32(v.halfH).f32(v.rot || 0);
+    writeBoundary(w, v.boundary);
     w.u8(v.rgb[0]).u8(v.rgb[1]).u8(v.rgb[2]);
     w.u8(v.kind ?? 0).u8(v.self ? 1 : 0);
     writePresenceLabel(w, v.label);
@@ -512,6 +586,32 @@ export function encodeBranchState(state) {
   return encodeJson(MSG.BRANCH_STATE, state);
 }
 
+function writeStr(w, s) {
+  let b = Buffer.from(s || '', 'utf8');
+  if (b.length > 0xffff) b = b.subarray(0, 0xffff);
+  w.u16(b.length).bytes(b);
+}
+
+export function encodeSystem(d) {
+  const w = new Writer(64);
+  w.u8(d.reset ? SYSTEM_FLAG.RESET : 0);
+  w.u32(d.nodes.length);
+  for (const n of d.nodes) {
+    w.u8(n.op).u32(n.handle);
+    if (n.op === ROW_OP.remove) continue;
+    writeStr(w, n.symbol);
+    writeStr(w, n.label);
+  }
+  w.u32(d.edges.length);
+  for (const e of d.edges) {
+    w.u8(e.op).u32(e.handle);
+    if (e.op === ROW_OP.remove) continue;
+    w.u32(e.source).u32(e.target);
+    writeStr(w, e.label);
+  }
+  return frame(MSG.SYSTEM, w.done());
+}
+
 function writeFrameHeader(w, h) {
   w.u32(h.frameSeq).u32(h.tickTime).u32(h.lastAppliedInputSeq || 0);
 }
@@ -525,6 +625,23 @@ export function encodeKeyframe(header, nodes) {
       .u8(n.r).u8(n.g).u8(n.b).u8(n.a).u8(n.radius).u8(n.stroke || 0);
   }
   return frame(MSG.KEYFRAME, w.done());
+}
+
+export const KEYFRAME_RECORD_BYTES = 20;
+
+export function deltaRecordBytes(c) {
+  if (c.entered) return 23;
+  if (c.left) return 3;
+  const [dx, dy] = c.dpos;
+  let n = 3 + (dx < -128 || dx > 127 || dy < -128 || dy > 127 ? 8 : 2);
+  if (c.dvel) {
+    const [dvx, dvy] = c.dvel;
+    n += dvx < -128 || dvx > 127 || dvy < -128 || dvy > 127 ? 4 : 2;
+  }
+  if (c.color) n += 4;
+  if (c.radius != null) n += 1;
+  if (c.stroke != null) n += 1;
+  return n;
 }
 
 export function encodeDelta(header, baseSeq, changes) {
@@ -694,6 +811,8 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
     if (op === SPACE_CTL_OP.NUDGE) msg = { op, axis: r.u8(), dir: r.i8() };
     else if (op === SPACE_CTL_OP.TURN) {
       msg = { op, rx: r.i16() / 100, ry: r.i16() / 100, rz: r.i16() / 100 };
+    } else if (op === SPACE_CTL_OP.POSE) {
+      msg = { op, rx: r.f32(), ry: r.f32(), rz: r.f32(), kx: r.f32(), ky: r.f32() };
     } else msg = { op };
   } else if (type === MSG.DEBUG_REQ) {
     const seq = r.u32();
@@ -705,7 +824,7 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
       msg = { seq, sel: DEBUG_SEL.SLOT, slot: r.u16() };
     }
   } else if (type === MSG.FILTER || type === MSG.SELECT || type === MSG.EDIT
-    || type === MSG.MARK) {
+    || type === MSG.MARK || type === MSG.FORK) {
 
     const seq = r.u32();
     msg = { seq, ...JSON.parse(r.rest().toString('utf8')) };
@@ -739,8 +858,9 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
     }
     msg = { seq, rows };
   } else if (type === MSG.META || type === MSG.DEBUG_INFO || type === MSG.ROSTER
-    || type === MSG.STATS || type === MSG.DEBUG_GRID || type === MSG.DEBUG_FORCES
-    || type === MSG.BRANCH_STATE) {
+    || type === MSG.STATS || type === MSG.DEBUG_GRID || type === MSG.DEBUG_FORCES || type === MSG.DEBUG_HEAT
+    || type === MSG.BRANCH_STATE || type === MSG.PORTALS || type === MSG.EDIT_REPLY
+    || type === MSG.FORK_REPLY) {
     msg = JSON.parse(r.rest().toString('utf8'));
   } else if (type === MSG.FIRE) {
     const count = r.u16();
@@ -748,26 +868,42 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
     for (let i = 0; i < count; i++) events.push({ px: r.i32(), py: r.i32() });
     msg = { events };
   } else if (type === MSG.PRESENCE_SELF) {
-    const cx = r.f32(), cy = r.f32(), halfW = r.f32(), halfH = r.f32(), rot = r.f32();
+    const boundary = readBoundary(r);
     const kind = r.u8();
     const own = r.u8() !== 0;
     const label = r.bytes(r.u8()).toString('utf8');
-    msg = { cx, cy, halfW, halfH, rot, kind, own, label };
+    msg = { boundary, kind, own, label };
   } else if (type === MSG.PRESENCE) {
     const count = r.u16();
     const viewers = [];
     for (let i = 0; i < count; i++) {
       const id = r.u32();
-      const cx = r.f32(), cy = r.f32(), halfW = r.f32(), halfH = r.f32(), rot = r.f32();
+      const boundary = readBoundary(r);
       const rgb = [r.u8(), r.u8(), r.u8()];
       const kind = r.u8();
       const self = r.u8() !== 0;
       const label = r.bytes(r.u8()).toString('utf8');
-      viewers.push({ id, cx, cy, halfW, halfH, rot, rgb, kind, self, label });
+      viewers.push({ id, boundary, rgb, kind, self, label });
     }
     msg = { viewers };
   } else if (type === MSG.POPULATION) {
     msg = { count: r.u32() };
+  } else if (type === MSG.SYSTEM) {
+    const str = () => r.bytes(r.u16()).toString('utf8');
+    const reset = (r.u8() & SYSTEM_FLAG.RESET) !== 0;
+    const nodes = [];
+    for (let i = r.u32(); i > 0; i--) {
+      const op = r.u8();
+      const handle = r.u32();
+      nodes.push(op === ROW_OP.remove ? { op, handle } : { op, handle, symbol: str(), label: str() });
+    }
+    const edges = [];
+    for (let i = r.u32(); i > 0; i--) {
+      const op = r.u8();
+      const handle = r.u32();
+      edges.push(op === ROW_OP.remove ? { op, handle } : { op, handle, source: r.u32(), target: r.u32(), label: str() });
+    }
+    msg = { reset, nodes, edges };
   } else if (type === MSG.NODE_LABEL) {
     const count = r.u16();
     const entries = [];
@@ -779,6 +915,19 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
       entries.push({ slot, flags, importance, text: r.bytes(len).toString('utf8') });
     }
     msg = { entries };
+  } else if (type === MSG.NODE_REST) {
+    const space = r.bytes(r.u8()).toString('utf8');
+    const six = () => ({ rx: r.f32(), ry: r.f32(), rz: r.f32(), kx: r.f32(), ky: r.f32(), scale: r.f32() });
+    const view = six();
+    const pose = r.u8() ? six() : null;
+    const centre = [r.f32(), r.f32(), r.f32()];
+    const half = [r.f32(), r.f32(), r.f32()];
+    const entries = [];
+    for (let i = r.u16(); i > 0; i--) {
+      const slot = r.u16();
+      entries.push(r.u8() ? { slot, x: r.f32(), y: r.f32(), z: r.f32() } : { slot, clear: true });
+    }
+    msg = { space, view, pose, centre, half, entries };
   } else if (type === MSG.WELCOME) {
     msg = {
       sessionId: r.u32(), branchId: r.u32(),
@@ -847,7 +996,19 @@ export function decodeMessage(buf, offset = 0, opts = {}) {
       const nVerts = r.u8();
       const verts = new Int32Array(nVerts * 2);
       for (let j = 0; j < verts.length; j++) verts[j] = r.i32();
-      upserts.push({ hullSlot, rgba, cx, cy, vx, vy, fillR, verts });
+      const pad = r.u32();
+      const spaces = new Array(r.u8());
+      for (let j = 0; j < spaces.length; j++) spaces[j] = r.bytes(r.u8()).toString('utf8');
+      let rests = null;
+      if (spaces.length) {
+        rests = new Float32Array(nVerts * 4);
+        for (let j = 0; j < nVerts; j++) {
+          const tag = r.u8();
+          rests[j * 4] = tag;
+          if (tag) { rests[j * 4 + 1] = r.f32(); rests[j * 4 + 2] = r.f32(); rests[j * 4 + 3] = r.f32(); }
+        }
+      }
+      upserts.push({ hullSlot, rgba, cx, cy, vx, vy, fillR, verts, pad, spaces, rests });
     }
     const removes = [];
     const removeCount = r.u16();

@@ -61,14 +61,14 @@ export function createGraphState() {
       } else if (type === MSG.PRESENCE) {
         viewers.clear();
         for (const v of msg.viewers) viewers.set(v.id, v);
+      } else if (type === MSG.EDIT_REPLY && msg && msg.action === 'rows' && !msg.ok) {
+        console.error(`[companion] the server refused a batch of ${msg.rows} row(s): ${msg.error}`);
       } else if (type === MSG.DEBUG_INFO) {
         if (msg && msg.id != null && state.onDebug) state.onDebug(msg);
       } else if (type === MSG.KEYFRAME) {
         state.frames++;
         state.lastTick = msg.tickTime;
-        const seen = new Set();
-        for (const n of msg.nodes) { enter(n.slot, n); seen.add(n.slot); }
-        for (const slot of [...nodes.keys()]) if (!seen.has(slot)) nodes.delete(slot);
+        for (const n of msg.nodes) enter(n.slot, n);
       } else if (type === MSG.DELTA) {
         state.frames++;
         state.lastTick = msg.tickTime;

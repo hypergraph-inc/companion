@@ -105,12 +105,9 @@ export function colourRows(kind, hex) {
   ];
 }
 
-export const MEMBER_LAYERS = ['memberOf', 'partOf', 'branchMember'];
+export const IN = 'in';
 
-export function hyperedgeRows({ id, kind, label, members, weight = 5, layer = 'memberOf', memberWeight = 0.5 }) {
-  if (!MEMBER_LAYERS.includes(layer)) {
-    throw new Error(`hyperedgeRows(${id}): layer "${layer}" does not form hulls; use one of ${MEMBER_LAYERS.join(', ')}`);
-  }
+export function hyperedgeRows({ id, kind, label, members, weight = 5, memberWeight = 0.5 }) {
   const rows = [node(id, kind, weight, label)];
   const seen = new Set();
   members.forEach((m, i) => {
@@ -119,7 +116,7 @@ export function hyperedgeRows({ id, kind, label, members, weight = 5, layer = 'm
     }
     if (seen.has(m)) return;
     seen.add(m);
-    rows.push(edge(m, id, layer, memberWeight));
+    rows.push(edge(m, id, IN, memberWeight));
   });
   return rows;
 }

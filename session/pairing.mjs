@@ -110,13 +110,29 @@ export async function resolveSession({ origin, identity, label, join, noPair, no
     ({ sessions, paired } = await listSessions({ origin, ticket: identity.ticket }));
   }
   if (!sessions.length) {
-    throw new Error(paired
-      ? 'this key is paired, but the account it belongs to has no window with companion'
-        + ' mode open — click "Companion" in the browser toolbar. If the browser is signed'
-        + ' in as a different account, this key is not enrolled there; pair a separate'
-        + ' identity for it with --label <name>.'
-      : 'no session this key may join has companion mode open '
+    if (paired) {
+      console.error('[companion] this key is paired, but no window with companion mode is open'
+        + ' — click "Companion" in the browser toolbar to open the window');
+      console.error('[companion] waiting for companion mode to be opened...');
+      const deadline = Date.now() + APPROVAL_WAIT_MS;
+      while (Date.now() < deadline) {
+        await sleep(APPROVAL_POLL_MS);
+        ({ sessions, paired } = await listSessions({ origin, ticket: identity.ticket }));
+        if (sessions.length) {
+          console.error('[companion] companion mode is now open, joining...');
+          break;
+        }
+      }
+      if (!sessions.length) {
+        throw new Error('no companion mode window was opened within 120s'
+          + ' — click "Companion" in the browser toolbar. If the browser is signed'
+          + ' in as a different account, this key is not enrolled there; pair a separate'
+          + ' identity for it with --label <name>.');
+      }
+    } else {
+      throw new Error('no session this key may join has companion mode open '
         + '— click "Companion" in the browser toolbar, or pass --join <token>');
+    }
   }
   if (sessions.length > 1) {
     console.error(`[companion] ${sessions.length} open sessions, joining most recent`);

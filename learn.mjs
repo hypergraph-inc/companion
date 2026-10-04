@@ -1,5 +1,7 @@
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import {
+  mkdir, writeFile, readFile, readdir, readlink, lstat, stat, rm, symlink,
+} from 'node:fs/promises';
+import { join, dirname, basename, resolve } from 'node:path';
 import { encodeHello, encodeMark, encodePresenceSelf } from './protocol/wire.mjs';
 import { streamProtocols } from './protocol/auth.mjs';
 import { createGraphState } from './read/state.mjs';
@@ -50,9 +52,8 @@ function readScene({ wsOrigin, ticket, scene, label, settleMs, onMark }) {
         await sleep(settleMs);
         if (!state.welcome) throw new Error(`no WELCOME from ${scene} — is the server running?`);
 
-        ws.send(encodePresenceSelf({
-          cx: 0, cy: 0, halfW: 1_000_000, halfH: 1_000_000, kind: 1, label,
-        }));
+        const R = 1_000_000;
+        ws.send(encodePresenceSelf({ boundary: [-R, -R, R, -R, R, R, -R, R], kind: 1, label }));
 
         const mark = async (slots) => {
           for (let i = 0; i < slots.length; i += MARK_CHUNK) {
@@ -91,22 +92,32 @@ function harvest(state) {
   };
 
   const isExample = (t) => /^EX\s*\d+\b/.test(t);
+  const isVerdict = (t) => /^(PASS|FAIL)\b/.test(t);
+  const neighbours = (slot) => [...new Set((adjacency.get(slot) || []).map((r) => r.other))];
+  const verdictsOf = (slot) => neighbours(slot).map(textOf).filter((t) => t && isVerdict(t));
+  const isExpectation = (slot) => {
+    const t = textOf(slot) || '';
+    return /^#[0-9a-f]{6}$/i.test(t) || (!isVerdict(t) && verdictsOf(slot).length > 0);
+  };
 
   const examples = named
     .filter((n) => isExample(n.text))
     .sort((a, b) => (Number(/^EX\s*(\d+)/.exec(a.text)[1]) - Number(/^EX\s*(\d+)/.exec(b.text)[1])))
     .map((n) => ({
       text: n.text,
-      near: [...new Set((adjacency.get(n.slot) || []).map((r) => r.other))]
+      near: neighbours(n.slot)
+        .filter((s) => !isExpectation(s))
         .map(textOf)
         .filter((t) => t && !isExample(t))
         .slice(0, 8),
+      checks: neighbours(n.slot)
+        .filter(isExpectation)
+        .flatMap((s) => {
+          const verdicts = verdictsOf(s);
+          return verdicts.length ? verdicts : [`FAIL no verdict was written for the expectation ${textOf(s)}`];
+        })
+        .sort(),
     }));
-
-  const anchors = named
-    .filter((n) => !isExample(n.text))
-    .slice(0, 40)
-    .map((n) => ({ text: n.text, degree: n.degree }));
 
   return {
     counts: {
@@ -116,7 +127,6 @@ function harvest(state) {
       labelled: named.length,
     },
     examples,
-    anchors,
   };
 }
 
@@ -155,18 +165,17 @@ function lessonMarkdown(lesson, read, learnedAt) {
       out.push('');
       out.push(ex.text);
       out.push('');
+      if (ex.checks.length) {
+        out.push('Checked by the engine when this was read:');
+        out.push('');
+        for (const c of ex.checks) out.push(`- ${c}`);
+        out.push('');
+      }
       if (ex.near.length) {
         out.push(`Attached to: ${ex.near.map((t) => `\`${t}\``).join(', ')}`);
         out.push('');
       }
     }
-  }
-
-  if (read.anchors.length) {
-    out.push('## What carries the scene');
-    out.push('');
-    for (const a of read.anchors) out.push(`- \`${a.text}\` (degree ${a.degree})`);
-    out.push('');
   }
 
   out.push('## Re-read it');
@@ -197,8 +206,11 @@ function indexMarkdown(shelf, locked, learnedAt) {
   out.push('## Held');
   out.push('');
   for (const e of shelf) {
+    const checks = e.read.examples.flatMap((x) => x.checks);
+    const failing = checks.filter((c) => c.startsWith('FAIL')).length;
+    const checked = checks.length ? ` ${checks.length} checks, ${failing} failing.` : '';
     out.push(`- **\`${slugOf(e.lesson)}\`** — ${e.lesson.title}. `
-      + `${e.read.examples.length} worked examples, ${e.read.counts.nodes} nodes.`);
+      + `${e.read.examples.length} worked examples, ${e.read.counts.nodes} nodes.${checked}`);
     out.push(`  ${e.lesson.teaches}`);
   }
   out.push('');
@@ -229,11 +241,60 @@ async function heldDigests(root) {
   }
 }
 
+const exists = (p) => stat(p).then(() => true, () => false);
+
+async function wasLearned(at) {
+  if (await exists(join(at, 'held.json'))) return true;
+  const md = await readFile(join(at, 'SKILL.md'), 'utf8').catch(() => '');
+  return /^\s+lesson:\s/m.test(md);
+}
+
+export async function linkSkills(skillDir, agentDirs) {
+  const root = resolve(skillDir);
+  const skills = [];
+  for (const d of await readdir(root, { withFileTypes: true }).catch(() => [])) {
+    if (d.isDirectory() && await exists(join(root, d.name, 'SKILL.md'))) skills.push(d.name);
+  }
+
+  const linked = [];
+  const conflicts = [];
+  for (const agentDir of agentDirs.map((d) => resolve(d))) {
+    if (agentDir === root) continue;
+    await mkdir(agentDir, { recursive: true });
+
+    for (const e of await readdir(agentDir, { withFileTypes: true })) {
+      if (!e.isSymbolicLink()) continue;
+      const at = join(agentDir, e.name);
+      const target = resolve(agentDir, await readlink(at));
+      if (dirname(target) === root && !skills.includes(basename(target))) await rm(at);
+    }
+
+    for (const name of skills) {
+      const at = join(agentDir, name);
+      const target = join(root, name);
+      const st = await lstat(at).catch(() => null);
+      if (st) {
+        if (st.isSymbolicLink() && resolve(agentDir, await readlink(at)) === target) continue;
+        const dangling = st.isSymbolicLink() && !await exists(at);
+        if (!dangling && !await wasLearned(at)) {
+          conflicts.push(at);
+          continue;
+        }
+        await rm(at, { recursive: !st.isSymbolicLink() });
+      }
+      await symlink(target, at, 'dir');
+    }
+    linked.push(agentDir);
+  }
+  return { linked, conflicts };
+}
+
 export async function learn({
   origin,
   ticket,
   label = 'claude',
   skillDir = DEFAULT_SKILL_DIR,
+  agentDirs = [],
   settleMs = 2500,
   only = null,
   coreOnly = true,
@@ -302,6 +363,10 @@ export async function learn({
     );
   }
 
-  onProgress({ phase: 'done', learned: entries.length, skipped: skipped.length, skillDir });
-  return { skillDir, learned: entries, skipped, locked };
+  const { linked, conflicts } = await linkSkills(skillDir, agentDirs);
+
+  onProgress({
+    phase: 'done', learned: entries.length, skipped: skipped.length, skillDir, linked, conflicts,
+  });
+  return { skillDir, learned: entries, skipped, locked, linked, conflicts };
 }
