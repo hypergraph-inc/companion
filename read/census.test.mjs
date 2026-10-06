@@ -67,13 +67,13 @@ test('--top caps the listing but not the count', () => {
 
 test('viewers get a readable kind and a fallback name', () => {
   const viewers = new Map([
-    [1, { id: 1, label: 'ana', kind: 0, self: true, cx: 1.6, cy: -2.4, halfW: 10.5, halfH: 20.4 }],
-    [2, { id: 2, label: '', kind: 1, self: false, cx: 0, cy: 0, halfW: 1, halfH: 1 }],
+    [1, { id: 1, label: 'ana', kind: 0, self: true, boundary: [1.6, -2.4, 10.5, -2.4, 10.5, 20.4, 1.6, 20.4] }],
+    [2, { id: 2, label: '', kind: 1, self: false, boundary: [-1, -1, 1, -1, 1, 1, -1, 1] }],
   ]);
   const out = quiet(() => report(fakeState({ viewers }), OPTS));
   assert.equal(out.viewers[0].kind, 'human');
   assert.equal(out.viewers[0].self, true);
-  assert.deepEqual([out.viewers[0].cx, out.viewers[0].cy], [2, -2]);
+  assert.deepEqual(out.viewers[0].boundary, [2, -2, 11, -2, 11, 20, 2, 20]);
   assert.equal(out.viewers[1].kind, 'agent');
   assert.equal(out.viewers[1].label, 'viewer 2');
 });

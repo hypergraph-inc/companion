@@ -7,6 +7,12 @@ export function censusOptions(cfg) {
   };
 }
 
+function pairs(boundary) {
+  const out = [];
+  for (let i = 0; i < boundary.length; i += 2) out.push(`${boundary[i]},${boundary[i + 1]}`);
+  return out.join(' ');
+}
+
 function build(state, opts) {
   const bb = state.bounds();
   const labelled = state.labelled();
@@ -16,10 +22,7 @@ function build(state, opts) {
     label: v.label || `viewer ${v.id}`,
     kind: v.kind === 1 ? 'agent' : 'human',
     self: v.self,
-    cx: Math.round(v.cx),
-    cy: Math.round(v.cy),
-    halfW: Math.round(v.halfW),
-    halfH: Math.round(v.halfH),
+    boundary: (v.boundary || []).map((x) => Math.round(x)),
   }));
 
   const out = {
@@ -84,8 +87,7 @@ export function report(state, opts) {
     console.log(`\nviewers (${out.viewers.length}):`);
     for (const p of out.viewers) {
       console.log(`  ${p.self ? '*' : ' '} ${p.label.padEnd(16)} ${p.kind.padEnd(6)}`
-        + ` at ${String(p.cx).padStart(7)},${String(p.cy).padStart(7)}`
-        + `  +-${p.halfW}x${p.halfH}`);
+        + ` boundary ${pairs(p.boundary)}`);
     }
   }
 

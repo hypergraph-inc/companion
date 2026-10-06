@@ -6,6 +6,19 @@ import { streamProtocols } from '../protocol/auth.mjs';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const HEARTBEAT_MS = 200;
 const WATCHDOG_MS = 60_000;
+const I32_MAX = 2 ** 31 - 1;
+const U32_MAX = 2 ** 32 - 1;
+
+export function boundsOf(boundary) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < boundary.length; i += 2) {
+    x0 = Math.min(x0, boundary[i]);
+    x1 = Math.max(x1, boundary[i]);
+    y0 = Math.min(y0, boundary[i + 1]);
+    y1 = Math.max(y1, boundary[i + 1]);
+  }
+  return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, halfW: (x1 - x0) / 2, halfH: (y1 - y0) / 2 };
+}
 
 export function openStream({ wsOrigin, ticket, scene, session, label, state, settleMs, lingerMs }) {
   const params = new URLSearchParams();
@@ -145,14 +158,15 @@ export function openStream({ wsOrigin, ticket, scene, session, label, state, set
   // Aiming clears what was in view before waiting again: the roster that comes
   // back describes the new rectangle, and mixing it with the old one reports
   // nodes that are no longer on screen.
-  async function aimAt(rect) {
-    const q = (v) => Math.max(-32768, Math.min(32767, Math.round(v / state.posScale)));
-    const qu = (v) => Math.max(1, Math.min(65535, Math.round(v / state.posScale)));
+  async function aimAt(view) {
+    const rect = view.boundary ? boundsOf(view.boundary) : view;
+    const q = (v) => Math.max(-I32_MAX, Math.min(I32_MAX, Math.round(v / state.posScale)));
+    const qu = (v) => Math.max(1, Math.min(U32_MAX, Math.round(v / state.posScale)));
     ws.send(encodeView({
       seq: ++seq,
       cx: q(rect.cx), cy: q(rect.cy), halfW: qu(rect.halfW), halfH: qu(rect.halfH),
     }));
-    announce(rect);
+    announce(view);
     state.nodes.clear();
     await sleep(settleMs);
   }

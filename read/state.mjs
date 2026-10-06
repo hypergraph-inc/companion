@@ -68,7 +68,9 @@ export function createGraphState() {
       } else if (type === MSG.KEYFRAME) {
         state.frames++;
         state.lastTick = msg.tickTime;
-        for (const n of msg.nodes) enter(n.slot, n);
+        const seen = new Set();
+        for (const n of msg.nodes) { enter(n.slot, n); seen.add(n.slot); }
+        for (const slot of [...nodes.keys()]) if (!seen.has(slot)) nodes.delete(slot);
       } else if (type === MSG.DELTA) {
         state.frames++;
         state.lastTick = msg.tickTime;

@@ -190,7 +190,7 @@ try {
         + (names.length ? ` — present: ${names.join(', ')}` : ' — nobody else is connected'));
     }
     console.error(`[companion] following "${peer.label || peer.id}"`);
-    await stream.aimAt({ cx: peer.cx, cy: peer.cy, halfW: peer.halfW, halfH: peer.halfH });
+    await stream.aimAt({ boundary: peer.boundary });
   } else if (a.has('cx')) {
     await stream.aimAt({
       cx: a.num('cx', 0),

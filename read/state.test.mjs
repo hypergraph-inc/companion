@@ -150,22 +150,25 @@ test('hulls upsert and remove by slot', () => {
   assert.equal(s.hulls.size, 0);
 });
 
+const SQUARE = [-1, -1, 1, -1, 1, 1, -1, 1];
+
 // Presence is the whole room each time, so it replaces rather than merges --
 // otherwise a viewer who left stays listed forever.
 test('presence replaces the viewer list wholesale', () => {
   const s = welcomed();
   const viewer = (id, label) =>
-    ({ id, cx: 0, cy: 0, halfW: 1, halfH: 1, rgb: [0, 0, 0], kind: 0, self: false, label });
+    ({ id, boundary: SQUARE, rgb: [0, 0, 0], kind: 0, self: false, label });
   s.apply(encodePresence({ viewers: [viewer(1, 'ana'), viewer(2, 'bo')] }));
   assert.equal(s.viewers.size, 2);
   s.apply(encodePresence({ viewers: [viewer(2, 'bo')] }));
   assert.deepEqual([...s.viewers.keys()], [2]);
+  assert.deepEqual(s.viewers.get(2).boundary, SQUARE);
 });
 
 test('viewerMatching is a case-insensitive substring, and never self', () => {
   const s = welcomed();
   const viewer = (id, label, self = false) =>
-    ({ id, cx: 0, cy: 0, halfW: 1, halfH: 1, rgb: [0, 0, 0], kind: 0, self, label });
+    ({ id, boundary: SQUARE, rgb: [0, 0, 0], kind: 0, self, label });
   s.apply(encodePresence({ viewers: [viewer(1, 'Zackary', true), viewer(2, 'Ana Lopez')] }));
   assert.equal(s.viewerMatching('ana').id, 2);
   assert.equal(s.viewerMatching('LOPEZ').id, 2);
